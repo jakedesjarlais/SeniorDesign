@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# TODO: Add internal instructions 
+# TODO: Add inputs for timeout, server name/ip
+
+#################### SCRIPT VARIABLES ######################
+VIRTUAL_HOSTNAME="orange.ece.utexas.edu"
+# In microseconds
+PING_INTERVAL=50000
+WAIT_INTERVAL=33675
+# Limits the number of pings this script can execute to
+# avoid security flags from UT IT. Runs for a max time of 1
+# min seconds at 1200 pings. 
+PING_LIMIT=1200
+############################################################
+
+## Internal Variables
+CORRECT_OUTPUT="$VIRTUAL_HOSTNAME is alive"
+DEAD_COUNT=0
+PING_COUNT=0
+
+
+while [ $PING_COUNT -lt $PING_LIMIT ]
+do
+    COMMAND_OUTPUT=$(fping -t2 $VIRTUAL_HOSTNAME 2> /dev/null)
+
+    if [ "$COMMAND_OUTPUT" != "$CORRECT_OUTPUT" ]
+    then
+       ((DEAD_COUNT++))
+    fi
+
+    # Waits for 33,675 microseconds. Ping interval will
+    # still be 50,000 microseconds because the ping command
+    # and bash commands take about 17ms
+    (perl -e 'use Time::HiRes qw( usleep ); usleep(33675)')
+
+    ((PING_COUNT++))
+done
+
+DOWNTIME=$(($(($DEAD_COUNT*$PING_INTERVAL))/1000))
+OUTPUT_MSG="$VIRTUAL_HOSTNAME was down for $DOWNTIME ms."
+
+echo $OUTPUT_MSG
+
