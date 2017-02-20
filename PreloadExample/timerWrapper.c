@@ -17,23 +17,17 @@ uint64_t getTimer(void){
     return timeElapsed;
 }
 
-//typedef int (*original_printf_type) (const char *format, ...);
-//typeof(puts) *original_puts_type;
-typedef int (*original_puts_type)(const char *str);
+typedef int (*orig_rand_type)(void);
 
-int puts(const char *str){
-    printf("Begin timer for puts...\n");
-   // startTimer();
-
-    
-   // original_puts_type original_puts;
-   // original_puts = (original_puts_type)dlsym(RTLD_NEXT,"puts");
-   // original_puts(str);
-
-   // uint64_t timeElapsed = getTimer();
-
-   // printf("puts took %d microseconds\n", timeElapsed);
-   return 1;
+int rand(void){
+    printf("YOU GOT HACKED: starting timer...\n");
+    startTimer();
+    orig_rand_type orig_rand;
+    orig_rand = (orig_rand_type)dlsym(RTLD_NEXT,"rand");
+    int x = orig_rand();
+    uint64_t timeElapsed = getTimer();
+    printf("getting random number took %d microseconds\n", timeElapsed);
+    return x;
 }
 
 
