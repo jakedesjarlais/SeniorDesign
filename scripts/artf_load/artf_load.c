@@ -33,11 +33,10 @@ int32_t memoryLoad = DEFAULT_MEMORY_LOAD;
 
 // Used for debugging
 void calculateAvg() {
-    int64_t avg = 0;
-    int64_t count = 0;
+    int64_t avg = 0, count = 0, i;
 
     // find the largest gap between the time entries in the time dat
-    for (int64_t i = 1; i < timePoints; i++) {
+    for (i = 1; i < timePoints; i++) {
         // End if this is a data point that was never set
         if (timeData[i] == NO_TIME_SET) {
             break;
@@ -57,10 +56,10 @@ void calculateAvg() {
 
 // Used for debugging
 void calculateMin() {
-    int32_t smallestDowntime = INT_MAX;
+    int32_t smallestDowntime = INT_MAX, i;
 
     // find the largest gap between the time entries in the time dat
-    for (int i = 1; i < timePoints; i++) {
+    for (i = 1; i < timePoints; i++) {
         int gap = timeData[i] - timeData[i-1];
 
         // Account for the case where the clock has wrapped around int max
@@ -85,9 +84,10 @@ void calculateMin() {
 
 void calculateDowntime() {
     clock_t largestDowntime = INT_MIN;
+    int i;
 
     // find the largest gap between the time entries in the time dat
-    for (int i = 1; i < timePoints; i++) {
+    for (i = 1; i < timePoints; i++) {
         clock_t gap = timeData[i] - timeData[i-1];
 
         // End if this is a data point that was never set
