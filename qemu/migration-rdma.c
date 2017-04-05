@@ -29,8 +29,26 @@
 #include <time.h>
 
 #define DEBUG_RDMA
+#define DEBUG_TRACE
+#define DEBUG_TIME
 //#define DEBUG_RDMA_VERBOSE
 //#define DEBUG_RDMA_REALLY_VERBOSE
+
+#ifdef DEBUG_TRACE
+#define DTPRINTF(fmt, ...) \
+    do { printf(fmt, ## __VA_ARGS__); } while (0)
+#else
+#define DTPRINTF(fmt, ...) \
+    do { } while (0)
+#endif
+
+#ifdef DEBUG_TIME
+#define TPRINTF(fmt, ...) \
+    do { printf(fmt, ## __VA_ARGS__); } while (0)
+#else
+#define TPRINTF(fmt, ...) \
+    do { } while (0)
+#endif
 
 #ifdef DEBUG_RDMA
 #define DPRINTF(fmt, ...) \
@@ -55,6 +73,13 @@
 #define DDDPRINTF(fmt, ...) \
     do { } while (0)
 #endif
+
+uint64_t getTime(void){
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    uint64_t time = 1000000 * t.tv_sec + t.tv_usec;
+    return time;
+}
 
 /*
  * Print and error on both the Monitor and the Log file.
@@ -224,12 +249,14 @@ typedef struct {
 
 static void caps_to_network(RDMACapabilities *cap)
 {
+
     cap->version = htonl(cap->version);
     cap->flags = htonl(cap->flags);
 }
 
 static void network_to_caps(RDMACapabilities *cap)
 {
+
     cap->version = ntohl(cap->version);
     cap->flags = ntohl(cap->flags);
 }
@@ -274,6 +301,7 @@ typedef struct QEMU_PACKED RDMARemoteBlock {
 
 static uint64_t htonll(uint64_t v)
 {
+
     union { uint32_t lv[2]; uint64_t llv; } u;
     u.lv[0] = htonl(v >> 32);
     u.lv[1] = htonl(v & 0xFFFFFFFFULL);
@@ -288,6 +316,7 @@ static uint64_t ntohll(uint64_t v) {
 
 static void remote_block_to_network(RDMARemoteBlock *rb)
 {
+
     rb->remote_host_addr = htonll(rb->remote_host_addr);
     rb->offset = htonll(rb->offset);
     rb->length = htonll(rb->length);
@@ -296,6 +325,7 @@ static void remote_block_to_network(RDMARemoteBlock *rb)
 
 static void network_to_remote_block(RDMARemoteBlock *rb)
 {
+
     rb->remote_host_addr = ntohll(rb->remote_host_addr);
     rb->offset = ntohll(rb->offset);
     rb->length = ntohll(rb->length);
@@ -418,6 +448,7 @@ typedef struct QEMU_PACKED {
 
 static void control_to_network(RDMAControlHeader *control)
 {
+
     control->type = htonl(control->type);
     control->len = htonl(control->len);
     control->repeat = htonl(control->repeat);
@@ -425,6 +456,7 @@ static void control_to_network(RDMAControlHeader *control)
 
 static void network_to_control(RDMAControlHeader *control)
 {
+
     control->type = ntohl(control->type);
     control->len = ntohl(control->len);
     control->repeat = ntohl(control->repeat);
@@ -448,6 +480,7 @@ typedef struct QEMU_PACKED {
 
 static void register_to_network(RDMARegister *reg)
 {
+
     reg->key.current_addr = htonll(reg->key.current_addr);
     reg->current_index = htonl(reg->current_index);
     reg->chunks = htonll(reg->chunks);
@@ -455,6 +488,7 @@ static void register_to_network(RDMARegister *reg)
 
 static void network_to_register(RDMARegister *reg)
 {
+
     reg->key.current_addr = ntohll(reg->key.current_addr);
     reg->current_index = ntohl(reg->current_index);
     reg->chunks = ntohll(reg->chunks);
@@ -469,6 +503,7 @@ typedef struct QEMU_PACKED {
 
 static void compress_to_network(RDMACompress *comp)
 {
+
     comp->value = htonl(comp->value);
     comp->block_idx = htonl(comp->block_idx);
     comp->offset = htonll(comp->offset);
@@ -477,6 +512,7 @@ static void compress_to_network(RDMACompress *comp)
 
 static void network_to_compress(RDMACompress *comp)
 {
+
     comp->value = ntohl(comp->value);
     comp->block_idx = ntohl(comp->block_idx);
     comp->offset = ntohll(comp->offset);
@@ -496,12 +532,14 @@ typedef struct QEMU_PACKED {
 
 static void result_to_network(RDMARegisterResult *result)
 {
+
     result->rkey = htonl(result->rkey);
     result->host_addr = htonll(result->host_addr);
 };
 
 static void network_to_result(RDMARegisterResult *result)
 {
+
     result->rkey = ntohl(result->rkey);
     result->host_addr = ntohll(result->host_addr);
 };
@@ -599,6 +637,7 @@ static int __qemu_rdma_add_block(RDMAContext *rdma, void *host_addr,
 static void qemu_rdma_init_one_block(void *host_addr,
     ram_addr_t block_offset, ram_addr_t length, void *opaque)
 {
+
     __qemu_rdma_add_block(opaque, host_addr, block_offset, length);
 }
 
@@ -609,6 +648,7 @@ static void qemu_rdma_init_one_block(void *host_addr,
  */
 static int qemu_rdma_init_ram_blocks(RDMAContext *rdma)
 {
+    DTPRINTF("%s\n", __func__);
     RDMALocalBlocks *local = &rdma->local_ram_blocks;
 
     assert(rdma->blockmap == NULL);
@@ -624,6 +664,7 @@ static int qemu_rdma_init_ram_blocks(RDMAContext *rdma)
 
 static int __qemu_rdma_delete_block(RDMAContext *rdma, ram_addr_t block_offset)
 {
+
     RDMALocalBlocks *local = &rdma->local_ram_blocks;
     RDMALocalBlock *block = g_hash_table_lookup(rdma->blockmap,
         (void *) block_offset);
@@ -711,6 +752,7 @@ static int __qemu_rdma_delete_block(RDMAContext *rdma, ram_addr_t block_offset)
  */
 static void qemu_rdma_dump_id(const char *who, struct ibv_context *verbs)
 {
+    DTPRINTF("%s\n", __func__);
     struct ibv_port_attr port;
 
     if (ibv_query_port(verbs, 1, &port)) {
@@ -741,6 +783,7 @@ static void qemu_rdma_dump_id(const char *who, struct ibv_context *verbs)
  */
 static void qemu_rdma_dump_gid(const char *who, struct rdma_cm_id *id)
 {
+    DTPRINTF("%s\n", __func__);
     char sgid[33];
     char dgid[33];
     inet_ntop(AF_INET6, &id->route.addr.addr.ibaddr.sgid, sgid, sizeof sgid);
@@ -793,6 +836,7 @@ static void qemu_rdma_dump_gid(const char *who, struct rdma_cm_id *id)
  */
 static int qemu_rdma_broken_ipv6_kernel(Error **errp, struct ibv_context *verbs)
 {
+    DTPRINTF("%s\n", __func__);
     struct ibv_port_attr port_attr;
 
     /* This bug only exists in linux, to our knowledge. */
@@ -881,6 +925,7 @@ static int qemu_rdma_broken_ipv6_kernel(Error **errp, struct ibv_context *verbs)
  */
 static int qemu_rdma_resolve_host(RDMAContext *rdma, Error **errp)
 {
+    DTPRINTF("%s\n", __func__);
     int ret;
     struct rdma_addrinfo *res;
     char port_str[16];
@@ -994,6 +1039,7 @@ err_resolve_create_id:
  */
 static int qemu_rdma_alloc_pd_cq(RDMAContext *rdma)
 {
+    DTPRINTF("%s\n", __func__);
     /* allocate pd */
     rdma->pd = ibv_alloc_pd(rdma->verbs);
     if (!rdma->pd) {
@@ -1039,6 +1085,7 @@ err_alloc_pd_cq:
  */
 static int qemu_rdma_alloc_qp(RDMAContext *rdma)
 {
+    DTPRINTF("%s\n", __func__);
     struct ibv_qp_init_attr attr = { 0 };
     int ret;
 
@@ -1061,6 +1108,7 @@ static int qemu_rdma_alloc_qp(RDMAContext *rdma)
 
 static int qemu_rdma_reg_whole_ram_blocks(RDMAContext *rdma)
 {
+
     int i;
     RDMALocalBlocks *local = &rdma->local_ram_blocks;
 
@@ -1197,6 +1245,7 @@ static int qemu_rdma_register_and_get_keys(RDMAContext *rdma,
  */
 static int qemu_rdma_reg_control(RDMAContext *rdma, int idx)
 {
+
     rdma->wr_data[idx].control_mr = ibv_reg_mr(rdma->pd,
             rdma->wr_data[idx].control, RDMA_CONTROL_MAX_BUFFER,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
@@ -1210,6 +1259,7 @@ static int qemu_rdma_reg_control(RDMAContext *rdma, int idx)
 
 const char *print_wrid(int wrid)
 {
+
     if (wrid >= RDMA_WRID_RECV_CONTROL) {
         return wrid_desc[RDMA_WRID_RECV_CONTROL];
     }
@@ -1253,6 +1303,7 @@ const char *print_wrid(int wrid)
  */
 static int qemu_rdma_unregister_waiting(RDMAContext *rdma)
 {
+
     while (rdma->unregistrations[rdma->unregister_current]) {
         int ret;
         uint64_t wr_id = rdma->unregistrations[rdma->unregister_current];
@@ -1339,6 +1390,7 @@ static uint64_t qemu_rdma_make_wrid(uint64_t wr_id, uint64_t index,
 static void qemu_rdma_signal_unregister(RDMAContext *rdma, uint64_t index,
                                         uint64_t chunk, uint64_t wr_id)
 {
+
     if (rdma->unregistrations[rdma->unregister_next] != 0) {
         fprintf(stderr, "rdma migration: queue is full!\n");
     } else {
@@ -1555,6 +1607,7 @@ err_block_for_wrid:
 static int qemu_rdma_post_send_control(RDMAContext *rdma, uint8_t *buf,
                                        RDMAControlHeader *head)
 {
+
     int ret = 0;
     RDMAWorkRequestData *wr = &rdma->wr_data[RDMA_WRID_CONTROL];
     struct ibv_send_wr *bad_wr;
@@ -1611,6 +1664,7 @@ static int qemu_rdma_post_send_control(RDMAContext *rdma, uint8_t *buf,
  */
 static int qemu_rdma_post_recv_control(RDMAContext *rdma, int idx)
 {
+
     struct ibv_recv_wr *bad_wr;
     struct ibv_sge sge = {
                             .addr = (uint64_t)(rdma->wr_data[idx].control),
@@ -1686,6 +1740,7 @@ static int qemu_rdma_exchange_get_response(RDMAContext *rdma,
 static void qemu_rdma_move_header(RDMAContext *rdma, int idx,
                                   RDMAControlHeader *head)
 {
+
     rdma->wr_data[idx].control_len = head->len;
     rdma->wr_data[idx].control_curr =
         rdma->wr_data[idx].control + sizeof(RDMAControlHeader);
@@ -2193,6 +2248,7 @@ static int qemu_rdma_write(QEMUFile *f, RDMAContext *rdma,
 
 static void qemu_rdma_cleanup(RDMAContext *rdma)
 {
+
     struct rdma_cm_event *cm_event;
     int ret, idx;
 
@@ -2271,6 +2327,7 @@ static void qemu_rdma_cleanup(RDMAContext *rdma)
 
 static int qemu_rdma_source_init(RDMAContext *rdma, Error **errp, bool pin_all)
 {
+    DTPRINTF("%s\n", __func__);
     int ret, idx;
     Error *local_err = NULL, **temp = &local_err;
 
@@ -2324,6 +2381,7 @@ err_rdma_source_init:
 
 static int qemu_rdma_connect(RDMAContext *rdma, Error **errp)
 {
+    DTPRINTF("%s\n", __func__);
     RDMACapabilities cap = {
                                 .version = RDMA_CONTROL_VERSION_CURRENT,
                                 .flags = 0,
@@ -2410,6 +2468,7 @@ err_rdma_source_connect:
 
 static int qemu_rdma_dest_init(RDMAContext *rdma, Error **errp)
 {
+    DTPRINTF("%s\n", __func__);
     int ret = -EINVAL, idx;
     struct rdma_cm_id *listen_id;
     char ip[40] = "unknown";
@@ -2495,6 +2554,7 @@ err_dest_init_create_listen_id:
 
 static void *qemu_rdma_data_init(const char *host_port, Error **errp)
 {
+    DTPRINTF("%s\n", __func__);
     RDMAContext *rdma = NULL;
     InetSocketAddress *addr;
 
@@ -2528,6 +2588,7 @@ static void *qemu_rdma_data_init(const char *host_port, Error **errp)
 static int qemu_rdma_put_buffer(void *opaque, const uint8_t *buf,
                                 int64_t pos, int size)
 {
+
     QEMUFileRDMA *r = opaque;
     QEMUFile *f = r->file;
     RDMAContext *rdma = r->rdma;
@@ -2655,6 +2716,7 @@ static int qemu_rdma_drain_cq(QEMUFile *f, RDMAContext *rdma)
 
 static int qemu_rdma_close(void *opaque)
 {
+    DTPRINTF("%s\n", __func__);
     DPRINTF("Shutting down connection.\n");
     QEMUFileRDMA *r = opaque;
     if (r->rdma) {
@@ -2798,6 +2860,7 @@ err:
 
 static int qemu_rdma_accept(RDMAContext *rdma)
 {
+    DTPRINTF("%s\n", __func__);
     RDMACapabilities cap;
     struct rdma_conn_param conn_param = {
                                             .responder_resources = 2,
@@ -3163,6 +3226,7 @@ out:
 static int qemu_rdma_registration_start(QEMUFile *f, void *opaque,
                                         uint64_t flags)
 {
+
     QEMUFileRDMA *rfile = opaque;
     RDMAContext *rdma = rfile->rdma;
 
@@ -3182,6 +3246,7 @@ static int qemu_rdma_registration_start(QEMUFile *f, void *opaque,
 static int qemu_rdma_registration_stop(QEMUFile *f, void *opaque,
                                        uint64_t flags)
 {
+
     Error *local_err = NULL, **errp = &local_err;
     QEMUFileRDMA *rfile = opaque;
     RDMAContext *rdma = rfile->rdma;
@@ -3292,6 +3357,7 @@ err:
 
 static int qemu_rdma_get_fd(void *opaque)
 {
+
     QEMUFileRDMA *rfile = opaque;
     RDMAContext *rdma = rfile->rdma;
 
@@ -3315,6 +3381,7 @@ const QEMUFileOps rdma_write_ops = {
 
 static void *qemu_fopen_rdma(RDMAContext *rdma, const char *mode)
 {
+
     QEMUFileRDMA *r = g_malloc0(sizeof(QEMUFileRDMA));
 
     if (qemu_file_mode_is_not_valid(mode)) {
@@ -3334,6 +3401,7 @@ static void *qemu_fopen_rdma(RDMAContext *rdma, const char *mode)
 
 static void rdma_accept_incoming_migration(void *opaque)
 {
+    DTPRINTF("%s\n", __func__);
     RDMAContext *rdma = opaque;
     int ret;
     QEMUFile *f;
@@ -3362,6 +3430,7 @@ static void rdma_accept_incoming_migration(void *opaque)
 
 void rdma_start_incoming_migration(const char *host_port, Error **errp)
 {
+    DTPRINTF("%s\n", __func__);
     int ret;
     RDMAContext *rdma;
     Error *local_err = NULL;
@@ -3399,15 +3468,11 @@ err:
     g_free(rdma);
 }
 
-uint64_t getTime(void){
-    struct timeval t;
-    gettimeofday(&t, NULL);
-    uint64_t time = 1000000 * t.tv_sec + t.tv_usec;
-    return time;
-}
+
 void rdma_start_outgoing_migration(void *opaque,
                             const char *host_port, Error **errp)
 {
+    DTPRINTF("%s\n", __func__);
     uint64_t start = getTime(), diff;
     MigrationState *s = opaque;
     Error *local_err = NULL, **temp = &local_err;
@@ -3438,7 +3503,7 @@ void rdma_start_outgoing_migration(void *opaque,
     s->file = qemu_fopen_rdma(rdma, "wb");
     migrate_fd_connect(s);
     diff = getTime() - start;
-    printf("rdma connection took: %llu ms\n", diff);
+    TPRINTF("rdma connection took: %llu us\n", diff);
     return;
 err:
     error_propagate(errp, local_err);
