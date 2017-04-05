@@ -100,7 +100,7 @@ int init_context(struct app_context **context, struct app_data *data)
 	return 0;
 }
 
-static int qp_change_state_init(struct ibv_qp *qp){
+int qp_change_state_init(struct ibv_qp *qp){
 	
 	struct ibv_qp_attr *attr;
 	int err = 0;
@@ -136,7 +136,7 @@ static int qp_change_state_init(struct ibv_qp *qp){
  *	  rkey - Remote Key, together with 'vaddr' identifies and grants access to memory region
  *	  vaddr - Virtual Address, memory address that peer can later write to
  */
-static int set_local_ib_connection(struct app_context *context, struct app_data *data){
+int set_local_ib_connection(struct app_context *context, struct app_data *data){
 
 	// First get local lid
 	struct ibv_port_attr attr;
@@ -163,7 +163,7 @@ static int set_local_ib_connection(struct app_context *context, struct app_data 
 	return 0;
 }
 
-static int tcp_exch_ib_connection_info(struct app_data *data){
+int tcp_exch_ib_connection_info(struct app_data *data){
 
 	char msg[sizeof "0000:000000:000000:00000000:0000000000000000:0000000000000000:0000000000000000"];
 	int parsed;
@@ -212,7 +212,7 @@ static void print_ib_connection(char *conn_name, struct ib_connection *conn) {
  * **********************
  *  Changes Queue Pair status to RTR (Ready to receive)
  */
-static int qp_change_state_rtr(struct ibv_qp *qp, struct app_data *data) {
+int qp_change_state_rtr(struct ibv_qp *qp, struct app_data *data) {
 	
 	struct ibv_qp_attr *attr;
 	int err = 0;
@@ -266,7 +266,7 @@ static int qp_change_state_rtr(struct ibv_qp *qp, struct app_data *data) {
  *  Changes Queue Pair status to RTS (Ready to send)
  *	QP status has to be RTR before changing it to RTS
  */
-static int qp_change_state_rts(struct ibv_qp *qp, struct app_data *data) {
+int qp_change_state_rts(struct ibv_qp *qp, struct app_data *data) {
 	struct ibv_qp_attr *attr;
 	int err = 0;
 	
@@ -302,7 +302,7 @@ static int qp_change_state_rts(struct ibv_qp *qp, struct app_data *data) {
  * **********************
  *	Writes 'context-buf' into buffer of peer
  */
-static int rdma_write(struct app_context *context, struct app_data *data){
+int rdma_write(struct app_context *context, struct app_data *data){
 	
 	context->sge_list.addr      = (uintptr_t)context->buf;
    	context->sge_list.length    = DEFAULT_BUF_SIZE;
@@ -363,7 +363,7 @@ static int rdma_write(struct app_context *context, struct app_data *data){
  * ********************
  *	Creates a connection to a TCP server 
  */
-static int tcp_client_connect(struct app_data *data)
+int tcp_client_connect(struct app_data *data)
 {
 	struct addrinfo *res, *t;
 	struct addrinfo hints = {
@@ -413,7 +413,7 @@ static int tcp_client_connect(struct app_data *data)
  * *******************
  *  Creates a TCP server socket  which listens for incoming connections 
  */
-static int tcp_server_listen(struct app_data *data){
+int tcp_server_listen(struct app_data *data){
 	struct addrinfo *res;//, *t;
 	struct addrinfo hints = {
 		.ai_flags		= AI_PASSIVE,

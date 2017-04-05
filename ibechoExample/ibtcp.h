@@ -49,22 +49,22 @@ struct app_data {
 
 };
 
-static int tcp_client_connect(struct app_data *data);
-static int tcp_server_listen(struct app_data *data);
+int tcp_client_connect(struct app_data *data);
+int tcp_server_listen(struct app_data *data);
 
 int init_context(struct app_context **context, struct app_data *data);
 //static void destroy_ctx(struct app_context *context);
 
-static int set_local_ib_connection(struct app_context *context, struct app_data *data);
+int set_local_ib_connection(struct app_context *context, struct app_data *data);
 static void print_ib_connection(char *conn_name, struct ib_connection *conn);
 
-static int tcp_exch_ib_connection_info(struct app_data *data);
+int tcp_exch_ib_connection_info(struct app_data *data);
 
-static int qp_change_state_init(struct ibv_qp *qp);
-static int qp_change_state_rtr(struct ibv_qp *qp, struct app_data *data);
-static int qp_change_state_rts(struct ibv_qp *qp, struct app_data *data);
+int qp_change_state_init(struct ibv_qp *qp);
+int qp_change_state_rtr(struct ibv_qp *qp, struct app_data *data);
+int qp_change_state_rts(struct ibv_qp *qp, struct app_data *data);
 
-static int rdma_write(struct app_context *context, struct app_data *data);
+int rdma_write(struct app_context *context, struct app_data *data);
 
 
 
