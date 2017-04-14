@@ -33,8 +33,8 @@
 #define DEBUG_RDMA
 #define DEBUG_TRACE
 #define DEBUG_TIME
-#define DEBUG_RDMA_VERBOSE
-#define DEBUG_RDMA_REALLY_VERBOSE
+//#define DEBUG_RDMA_VERBOSE
+//#define DEBUG_RDMA_REALLY_VERBOSE
 
 #ifdef DEBUG_TRACE
 #define DTPRINTF(fmt, ...) \
@@ -354,6 +354,8 @@ typedef struct RDMALocalBlocks {
 typedef struct RDMAContext {
     char *host;
     int port;
+    int sockfd;
+    struct app_data data;
 
     RDMAWorkRequestData wr_data[RDMA_WRID_MAX];
 
@@ -3504,7 +3506,8 @@ void rdma_start_outgoing_migration(void *opaque,
                             const char *host_port, Error **errp)
 {
     DTPRINTF("%s\n", __func__);
-    uint64_t start = getTime(), diff;
+    //uint64_t start = getTime(), diff;
+    uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_REALTIME), diff;
     MigrationState *s = opaque;
     Error *local_err = NULL, **temp = &local_err;
     RDMAContext *rdma = qemu_rdma_data_init(host_port, &local_err);
@@ -3533,8 +3536,9 @@ void rdma_start_outgoing_migration(void *opaque,
 
     s->file = qemu_fopen_rdma(rdma, "wb");
     migrate_fd_connect(s);
-    diff = getTime() - start;
-    TPRINTF("rdma connection took: %llu us\n", diff);
+    //diff = getTime() - start;
+    diff = qemu_clock_get_ms(QEMU_CLOCK_REALTIME) - start;
+    TPRINTF("rdma connection took: %llu ms\n", diff);
     return;
 err:
     error_propagate(errp, local_err);
@@ -3596,12 +3600,6 @@ static void rdma_via_tcp_init(RDMAContext *rdma, struct app_data *data)
         goto err_rdma_source_init;
     }
 
-
-    ret = qemu_rdma_init_ram_blocks(rdma);
-    if (ret) {
-        fprintf(stderr, "rdma migration: error initializing ram blocks!\n");
-        //goto err_rdma_dest_wait;
-    }
 
     for (idx = 0; idx < RDMA_WRID_MAX; idx++) {
         ret = qemu_rdma_reg_control(rdma, idx);
@@ -3749,7 +3747,8 @@ void rdma_start_outgoing_migration2(void *opaque,
                             const char *host_port, Error **errp)
 {
     DTPRINTF("%s\n", __func__);
-    uint64_t start = getTime(), diff;
+    //uint64_t start = getTime(), diff;
+    int64_t start = qemu_clock_get_ms(QEMU_CLOCK_REALTIME), diff;
     MigrationState *s = opaque;
     Error *local_err = NULL, **temp = &local_err;
     RDMAContext *rdma = qemu_rdma_data_init(host_port, &local_err);
@@ -3781,6 +3780,12 @@ void rdma_start_outgoing_migration2(void *opaque,
 //		return ret;
 //	}
 
+
+    ret = qemu_rdma_init_ram_blocks(rdma);
+    if (ret) {
+        fprintf(stderr, "rdma migration: error initializing ram blocks!\n");
+        //goto err_rdma_dest_wait;
+    }
 
 
 
@@ -3838,8 +3843,9 @@ void rdma_start_outgoing_migration2(void *opaque,
 
     s->file = qemu_fopen_rdma(rdma, "wb");
     migrate_fd_connect(s);
-    diff = getTime() - start;
-    TPRINTF("rdma connection took: %llu us\n", diff);
+//    diff = qemu_get_ - start;
+    diff = qemu_clock_get_ms(QEMU_CLOCK_REALTIME) - start;
+    TPRINTF("rdma connection took: %llu ms\n", diff);
     return;
 err:
     error_propagate(errp, local_err);
@@ -3848,111 +3854,44 @@ err:
     return -1;
 }
 
-void rdma_start_incoming_migration2(const char *host_port, Error **errp)
+static void rdma_accept_incoming_migration2(void *opaque)
 {
     DTPRINTF("%s\n", __func__);
-    int ret;
-    RDMAContext *rdma;
-    Error *local_err = NULL;
-
-    DPRINTF("Starting RDMA-based incoming migration\n");
-    rdma = qemu_rdma_data_init(host_port, &local_err);
-
-    if (rdma == NULL) {
-        goto err;
-    }
-
-    /*
-    ret = qemu_rdma_dest_init(rdma, &local_err);
-
-    if (ret) {
-        goto err;
-    }
-
-    DPRINTF("qemu_rdma_dest_init success\n");
-
-    ret = rdma_listen(rdma->listen_id, 5);
-
-    if (ret) {
-        ERROR(errp, "listening on socket!");
-        goto err;
-    }
-    */
-
-
-	struct app_context 		*context = NULL;
-    struct app_data	 	 data = {
-		.port	    		= rdma->port, 
-		.servername 		= rdma->host,
-		.remote_connection 	= NULL,
-		.ib_dev     		= NULL
-	};
-
-
-    
-    rdma_via_tcp_init(rdma, &data);	
-	//ret = init_context(&context, &data);
-	//if (ret) {
-	//	fprintf(stderr, "*Error* init_context() failed with %d\n", ret);
-	//	return ret;		
-	//}
-	//ret = set_local_ib_connection(context, &data);
-	//if (ret) {
-	//	return ret;
-	//}
-
+    RDMAContext *rdma = opaque;
 
     int er = 0;
-    data.sockfd = tcp_server_listen(&data);
-	if (!data.sockfd) {
-		fprintf(stderr, "tcp_server_listen (TCP) failed\n");
-		return -1;		
-	}
-	er = tcp_exch_ib_connection_info(&data);
+    int ret = 0;
+    
+//    rdma_via_tcp_init(rdma, &data);	
+//    data.sockfd = accept(rdma->sockfd, NULL, 0);
+    rdma->data.sockfd = accept(rdma->sockfd, NULL, 0);
+    ret = qemu_rdma_init_ram_blocks(rdma);
+    if (ret) {
+        fprintf(stderr, "rdma migration: error initializing ram blocks!\n");
+        //goto err_rdma_dest_wait;
+    }
+
+	er = tcp_exch_ib_connection_info(&(rdma->data));
 	if (er) {
 		fprintf(stderr, "Could not exchange connection, tcp_exch_ib_connection\n");
 	}
 
-    //rdma->qp = context->qp;
-    //rdma->cq = context->rcq;
-    //rdma->pd = context->pd;
-    //rdma->verbs = context->ib_context;
-
-    er = qemu_qp_change_state_rtr(rdma->qp, &data);
+    //er = qemu_qp_change_state_rtr(rdma->qp, &data);
+    er = qemu_qp_change_state_rtr(rdma->qp, &(rdma->data));
     if (er) {
         fprintf(stderr, "qp modify to rtr failed: %d\n", er);
-        goto err;
+        //goto err;
     }
-    ret = qemu_qp_change_state_rts(rdma->qp, &data);
+//    ret = qemu_qp_change_state_rts(rdma->qp, &data);
+    ret = qemu_qp_change_state_rts(rdma->qp, &(rdma->data));
     if (ret) {
         fprintf(stderr, "qp modify to rtr failed: %d\n", ret);
-        goto err;
+       // goto err;
     }
 
     DPRINTF("rdma_listen success\n");
 
-    /*
-    qemu_set_fd_handler2(rdma->channel->fd, NULL,
-                         rdma_accept_incoming_migration, NULL,
-                            (void *)(intptr_t) rdma);
-                            */
-    int idx;
-    //ret = qemu_rdma_init_ram_blocks(rdma);
-    //if (ret) {
-    //    fprintf(stderr, "rdma migration: error initializing ram blocks!\n");
-    //    //goto err_rdma_dest_wait;
-    //}
-
-    //for (idx = 0; idx < RDMA_WRID_MAX; idx++) {
-//  //      ret = qemu_rdma_reg_control(rdma, idx);
-    //    if (ret) {
-    //        fprintf(stderr, "rdma: error registering %d control!\n", idx);
-    //        //goto err_rdma_dest_wait;
-    //    }
-    //}
-
-
-    rdma->connected = true;
+        rdma->connected = true;
 
     
    
@@ -3969,7 +3908,7 @@ void rdma_start_incoming_migration2(const char *host_port, Error **errp)
     QEMUFile *f;
     f = qemu_fopen_rdma(rdma, "rb");
     if (f == NULL) {
-        ERROR(errp, "could not qemu_fopen_rdma!");
+      //  ERROR(errp, "could not qemu_fopen_rdma!");
         qemu_rdma_cleanup(rdma);
         return;
     }
@@ -3977,6 +3916,79 @@ void rdma_start_incoming_migration2(const char *host_port, Error **errp)
 
     rdma->migration_started_on_destination = 1;
     process_incoming_migration(f);
+
+
+}
+
+void rdma_start_incoming_migration2(const char *host_port, Error **errp)
+{
+    DTPRINTF("%s\n", __func__);
+    int ret;
+    RDMAContext *rdma;
+    Error *local_err = NULL;
+
+    DPRINTF("Starting RDMA-based incoming migration\n");
+    rdma = qemu_rdma_data_init(host_port, &local_err);
+
+    if (rdma == NULL) {
+        goto err;
+    }
+
+    rdma_via_tcp_init(rdma, &(rdma->data));	
+
+    int er = 0;
+//    data.sockfd = tcp_server_listen(&data);
+    struct addrinfo *res;//, *t;
+    struct addrinfo hints = {
+        .ai_flags       = AI_PASSIVE,
+        .ai_family      = AF_UNSPEC,
+        .ai_socktype    = SOCK_STREAM   
+    };
+
+    char *service;
+    int sockfd = -1;
+    int n, connfd;
+    int err =0;
+    
+    err = asprintf(&service, "%d", rdma->port);
+    if (!err || err == -1) {
+        fprintf(stderr, "Error writing port-number to port-string, %d\n", err);
+        return err;     
+    }
+    
+    err = getaddrinfo(NULL, service, &hints, &res);
+    if (err < 0) {
+        fprintf(stderr, "getaddrinfo threw error: %d\n", err);
+        return -1;
+    }
+
+    sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (!sockfd) {
+        fprintf(stderr, "Could not create server socket\n");
+        return -1;
+    }
+    
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof n);
+
+    err = bind(sockfd,res->ai_addr, res->ai_addrlen);
+    if (err) {
+        fprintf(stderr, "Could not bind addr to socket\n");
+        return -1;
+    }
+    
+    listen(sockfd, 1);
+    rdma->sockfd = sockfd;
+
+	if (rdma->sockfd < 0) {
+		fprintf(stderr, "tcp_server_listen (TCP) failed\n");
+		return -1;		
+	}
+
+    qemu_set_fd_handler2(rdma->sockfd, NULL,
+                         rdma_accept_incoming_migration2, NULL,
+                            (void *)(intptr_t) rdma);
+    freeaddrinfo(res);
+//    rdma_accept_incoming_migration2(rdma);
 
     return;
 err:
