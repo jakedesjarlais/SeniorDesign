@@ -33,8 +33,8 @@
 #define DEBUG_RDMA
 #define DEBUG_TRACE
 #define DEBUG_TIME
-//#define DEBUG_RDMA_VERBOSE
-//#define DEBUG_RDMA_REALLY_VERBOSE
+#define DEBUG_RDMA_VERBOSE
+#define DEBUG_RDMA_REALLY_VERBOSE
 
 #ifdef DEBUG_TRACE
 #define DTPRINTF(fmt, ...) \
@@ -3542,6 +3542,31 @@ err:
     migrate_fd_error(s);
 }
 
+static int qemu_qp_change_state_init(struct ibv_qp *qp){
+	
+	struct ibv_qp_attr *attr;
+	int err = 0;
+	
+    attr =  malloc(sizeof *attr);
+    memset(attr, 0, sizeof *attr);
+
+    attr->qp_state        	= IBV_QPS_INIT;
+    attr->pkey_index      	= 0;
+    attr->port_num        	= DEFAULT_IB_PORT;
+    attr->qp_access_flags	= IBV_ACCESS_REMOTE_WRITE;
+
+    err = ibv_modify_qp(qp, attr,
+                            IBV_QP_STATE        |
+                            IBV_QP_PKEY_INDEX   |
+                            IBV_QP_PORT         |
+                            IBV_QP_ACCESS_FLAGS);
+	if (err) {
+		fprintf(stderr, "Could not modify QP to INIT, ibv_modify_qp, err: %d\n", err);
+	}
+
+	return err;
+}
+
 static void rdma_via_tcp_init(RDMAContext *rdma, struct app_data *data)
 {
     DTPRINTF("%s\n", __func__);
@@ -3571,11 +3596,6 @@ static void rdma_via_tcp_init(RDMAContext *rdma, struct app_data *data)
         goto err_rdma_source_init;
     }
 
-	int err = qp_change_state_init(rdma->qp);
-	if (err) {
-		fprintf(stderr, "qp_change_state_init failed: %d\n", err);
-		return err;
-	}	
 
     ret = qemu_rdma_init_ram_blocks(rdma);
     if (ret) {
@@ -3590,6 +3610,13 @@ static void rdma_via_tcp_init(RDMAContext *rdma, struct app_data *data)
             //goto err_rdma_dest_wait;
         }
     }
+
+
+	int err = qemu_qp_change_state_init(rdma->qp);
+	if (err) {
+		fprintf(stderr, "qp_change_state_init failed: %d\n", err);
+		return err;
+	}	
 
 	struct ibv_port_attr attr;
 	err = ibv_query_port(rdma->verbs, 1, &attr);
@@ -3626,6 +3653,98 @@ static void print_ib_connection(char *conn_name, struct ib_connection *conn) {
 
 
 
+/*
+ *  qp_change_state_rtr
+ * **********************
+ *  Changes Queue Pair status to RTR (Ready to receive)
+ */
+static int qemu_qp_change_state_rtr(struct ibv_qp *qp, struct app_data *data) {
+	
+	struct ibv_qp_attr *attr;
+	int err = 0;
+	
+    attr =  malloc(sizeof *attr);
+	if (!attr) {
+		fprintf(stderr, "Could not allocate memory for ibv_qp_attr\n");
+		return -ENOMEM;		
+	}
+    memset(attr, 0, sizeof *attr);
+
+    attr->qp_state              = IBV_QPS_RTR;
+    attr->path_mtu              = IBV_MTU_1024;
+    attr->dest_qp_num           = data->remote_connection->qpn;
+    attr->rq_psn                = data->remote_connection->psn;
+    attr->max_dest_rd_atomic    = 0;
+    attr->min_rnr_timer         = 2;
+    attr->ah_attr.is_global     = 1;
+    attr->ah_attr.dlid          = data->remote_connection->lid;
+    attr->ah_attr.sl            = DEFAULT_SL;
+    attr->ah_attr.src_path_bits = 0;
+    attr->ah_attr.port_num      = DEFAULT_IB_PORT;
+	
+	attr->ah_attr.grh.dgid = data->remote_connection->gid;
+	attr->ah_attr.grh.flow_label = 0;
+	attr->ah_attr.grh.sgid_index = 0;
+	attr->ah_attr.grh.hop_limit = 1;
+	attr->ah_attr.grh.traffic_class = 0;
+
+    err = ibv_modify_qp(qp, attr,
+                IBV_QP_STATE                |
+                IBV_QP_AV                   |
+                IBV_QP_PATH_MTU             |
+                IBV_QP_DEST_QPN             |
+                IBV_QP_RQ_PSN               |
+                IBV_QP_MAX_DEST_RD_ATOMIC   |
+                IBV_QP_MIN_RNR_TIMER);
+	if (err) {
+		fprintf(stderr, "Could not modify QP to RTR state: %d\n", err);
+		return err;		
+	}	
+
+	free(attr);
+	
+	return err;
+}
+
+/*
+ *  qp_change_state_rts
+ * **********************
+ *  Changes Queue Pair status to RTS (Ready to send)
+ *	QP status has to be RTR before changing it to RTS
+ */
+static int qemu_qp_change_state_rts(struct ibv_qp *qp, struct app_data *data) {
+	struct ibv_qp_attr *attr;
+	int err = 0;
+	
+    attr =  malloc(sizeof *attr);
+    memset(attr, 0, sizeof *attr);
+
+	attr->qp_state              = IBV_QPS_RTS;
+    attr->timeout               = 14;
+    attr->retry_cnt             = 7;
+    attr->rnr_retry             = 7;    /* infinite retry */
+    attr->sq_psn                = data->local_connection.psn;
+    attr->max_rd_atomic         = 1;
+
+    err = ibv_modify_qp(qp, attr,
+                IBV_QP_STATE            |
+                IBV_QP_TIMEOUT          |
+                IBV_QP_RETRY_CNT        |
+                IBV_QP_RNR_RETRY        |
+                IBV_QP_SQ_PSN           |
+                IBV_QP_MAX_QP_RD_ATOMIC);
+	if (err) {
+		fprintf(stderr, "Could not modify QP to RTS state: %d\n", err);
+		return err;		
+	}	
+
+	free(attr);
+	
+	return err;
+}
+
+
+
 void rdma_start_outgoing_migration2(void *opaque,
                             const char *host_port, Error **errp)
 {
@@ -3651,16 +3770,16 @@ void rdma_start_outgoing_migration2(void *opaque,
 
 
     
-    //rdma_via_tcp_init(rdma, &data);	
-	ret = init_context(&context, &data);
-	if (ret) {
-		fprintf(stderr, "*Error* init_context() failed with %d\n", ret);
-		return ret;		
-	}
-	ret = set_local_ib_connection(context, &data);
-	if (ret) {
-		return ret;
-	}
+    rdma_via_tcp_init(rdma, &data);	
+//	ret = init_context(&context, &data);
+//	if (ret) {
+//		fprintf(stderr, "*Error* init_context() failed with %d\n", ret);
+//		return ret;		
+//	}
+//	ret = set_local_ib_connection(context, &data);
+//	if (ret) {
+//		return ret;
+//	}
 
 
 
@@ -3675,35 +3794,43 @@ void rdma_start_outgoing_migration2(void *opaque,
 	print_ib_connection("Local  Connection", &data.local_connection);
 	print_ib_connection("Remote Connection", data.remote_connection);	
 	
-    rdma->qp = context->qp;
-    rdma->cq = context->rcq;
-    rdma->pd = context->pd;
-    rdma->verbs = context->ib_context;
-    ret = qp_change_state_rtr(rdma->qp, &data);
+//`    rdma->qp = context->qp;
+//`    rdma->cq = context->rcq;
+//`    rdma->pd = context->pd;
+//`    rdma->verbs = context->ib_context;
+    ret = qemu_qp_change_state_rtr(rdma->qp, &data);
     if (ret) {
         fprintf(stderr, "qp modify to rtr failed: %d\n", ret);
         goto err;
     }
     DPRINTF("rtr success\n");
-    ret = qp_change_state_rts(rdma->qp, &data);
+    ret = qemu_qp_change_state_rts(rdma->qp, &data);
     if (ret) {
         fprintf(stderr, "qp modify to rtr failed: %d\n", ret);
         goto err;
     }
-    ret = qemu_rdma_init_ram_blocks(rdma);
+//    ret = qemu_rdma_init_ram_blocks(rdma);
+//    if (ret) {
+//        fprintf(stderr, "rdma migration: error initializing ram blocks!\n");
+//        //goto err_rdma_dest_wait;
+//    }
+//
+//    int idx;
+//    for (idx = 0; idx < RDMA_WRID_MAX; idx++) {
+//        ret = qemu_rdma_reg_control(rdma, idx);
+//        if (ret) {
+//            fprintf(stderr, "rdma: error registering %d control!\n", idx);
+//            //goto err_rdma_dest_wait;
+//        }
+//    }
+    ret = qemu_rdma_post_recv_control(rdma, RDMA_WRID_READY);
     if (ret) {
-        fprintf(stderr, "rdma migration: error initializing ram blocks!\n");
-        //goto err_rdma_dest_wait;
+        ERROR(errp, "posting second control recv!");
+    //    goto err_rdma_source_connect;
     }
 
-    int idx;
-    for (idx = 0; idx < RDMA_WRID_MAX; idx++) {
-//        ret = qemu_rdma_reg_control(rdma, idx);
-        if (ret) {
-            fprintf(stderr, "rdma: error registering %d control!\n", idx);
-            //goto err_rdma_dest_wait;
-        }
-    }
+    rdma->control_ready_expected = 1;
+    rdma->nb_sent = 0;
 
 
     rdma->connected = true;
@@ -3763,16 +3890,16 @@ void rdma_start_incoming_migration2(const char *host_port, Error **errp)
 
 
     
-    //rdma_via_tcp_init(rdma, &data);	
-	ret = init_context(&context, &data);
-	if (ret) {
-		fprintf(stderr, "*Error* init_context() failed with %d\n", ret);
-		return ret;		
-	}
-	ret = set_local_ib_connection(context, &data);
-	if (ret) {
-		return ret;
-	}
+    rdma_via_tcp_init(rdma, &data);	
+	//ret = init_context(&context, &data);
+	//if (ret) {
+	//	fprintf(stderr, "*Error* init_context() failed with %d\n", ret);
+	//	return ret;		
+	//}
+	//ret = set_local_ib_connection(context, &data);
+	//if (ret) {
+	//	return ret;
+	//}
 
 
     int er = 0;
@@ -3786,14 +3913,19 @@ void rdma_start_incoming_migration2(const char *host_port, Error **errp)
 		fprintf(stderr, "Could not exchange connection, tcp_exch_ib_connection\n");
 	}
 
-    rdma->qp = context->qp;
-    rdma->cq = context->rcq;
-    rdma->pd = context->pd;
-    rdma->verbs = context->ib_context;
+    //rdma->qp = context->qp;
+    //rdma->cq = context->rcq;
+    //rdma->pd = context->pd;
+    //rdma->verbs = context->ib_context;
 
-    er = qp_change_state_rtr(rdma->qp, &data);
+    er = qemu_qp_change_state_rtr(rdma->qp, &data);
     if (er) {
         fprintf(stderr, "qp modify to rtr failed: %d\n", er);
+        goto err;
+    }
+    ret = qemu_qp_change_state_rts(rdma->qp, &data);
+    if (ret) {
+        fprintf(stderr, "qp modify to rtr failed: %d\n", ret);
         goto err;
     }
 
@@ -3805,32 +3937,32 @@ void rdma_start_incoming_migration2(const char *host_port, Error **errp)
                             (void *)(intptr_t) rdma);
                             */
     int idx;
-    ret = qemu_rdma_init_ram_blocks(rdma);
-    if (ret) {
-        fprintf(stderr, "rdma migration: error initializing ram blocks!\n");
-        //goto err_rdma_dest_wait;
-    }
+    //ret = qemu_rdma_init_ram_blocks(rdma);
+    //if (ret) {
+    //    fprintf(stderr, "rdma migration: error initializing ram blocks!\n");
+    //    //goto err_rdma_dest_wait;
+    //}
 
-    for (idx = 0; idx < RDMA_WRID_MAX; idx++) {
-//        ret = qemu_rdma_reg_control(rdma, idx);
-        if (ret) {
-            fprintf(stderr, "rdma: error registering %d control!\n", idx);
-            //goto err_rdma_dest_wait;
-        }
-    }
+    //for (idx = 0; idx < RDMA_WRID_MAX; idx++) {
+//  //      ret = qemu_rdma_reg_control(rdma, idx);
+    //    if (ret) {
+    //        fprintf(stderr, "rdma: error registering %d control!\n", idx);
+    //        //goto err_rdma_dest_wait;
+    //    }
+    //}
 
 
     rdma->connected = true;
 
     
-    /*
+   
     ret = qemu_rdma_post_recv_control(rdma, RDMA_WRID_READY);
     if (ret) {
         fprintf(stderr, "rdma migration: error posting second control recv!\n");
         //goto err_rdma_dest_wait;
     }
     
-    */
+    
 
     DPRINTF("Accepted migration\n");
 
